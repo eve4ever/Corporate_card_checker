@@ -1,0 +1,19 @@
+name: Search Reminder
+
+on:
+  schedule:
+    - cron: '0 8,17 * * *'
+  workflow_dispatch:
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send search reminder
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "{\"chat_id\": \"${TELEGRAM_CHAT_ID}\", \"text\": \"<b>🔍 תזכורת חיפוש מברשת שיניים Oral-B</b>\n\n<a href=\\\"tg://search?query=oral-b io 7\\\">חפשי: oral-b io 7</a>\", \"parse_mode\": \"HTML\", \"disable_web_page_preview\": true}"
