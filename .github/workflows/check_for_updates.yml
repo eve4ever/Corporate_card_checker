@@ -1,4 +1,4 @@
-name: Check Corporate card
+name: Check Stock
 
 on:
   schedule:
@@ -24,6 +24,10 @@ jobs:
             STATUS="✅ מחיר מועדון זמין!"
           fi
           
+          MESSAGE="${STATUS}
+          
+          לינק: ${URL}"
+          
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            -d chat_id="${TELEGRAM_CHAT_ID}" \
-            -d "text=${STATUS}%0A%0A${URL}"
+            -H "Content-Type: application/json" \
+            -d "{\"chat_id\": \"${TELEGRAM_CHAT_ID}\", \"text\": \"${MESSAGE}\"}"
