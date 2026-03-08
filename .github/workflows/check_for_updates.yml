@@ -1,4 +1,4 @@
-name: Check Stock
+name: Check Corporate card
 
 on:
   schedule:
@@ -18,11 +18,12 @@ jobs:
           
           RESPONSE=$(curl -s "$URL")
           
-          if echo "$RESPONSE" | grep -qiE "אזל|לא זמין|out of stock|נגמר"; then
-            echo "❌ Out of stock"
+          if echo "$RESPONSE" | grep -q "אזל המלאי למחיר מועדון"; then
+            STATUS="❌ אזל המלאי למחיר מועדון"
           else
-            echo "✅ In stock - sending notification"
-            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-              -d chat_id="${TELEGRAM_CHAT_ID}" \
-              -d text="🎉 השובר חזר למלאי!%0A%0A${URL}"
+            STATUS="✅ מחיר מועדון זמין!"
           fi
+          
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d "text=${STATUS}%0A%0A${URL}"
