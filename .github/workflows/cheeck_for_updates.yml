@@ -1,0 +1,28 @@
+name: Check Stock
+
+on:
+  schedule:
+    - cron: '0 */5 * * *'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check stock and notify
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          URL="https://www.mycorporate.co.il/?page=Benefit&uuid=89ff39db-8348-456a-9667-e2dae46e&category_id=81"
+          
+          RESPONSE=$(curl -s "$URL")
+          
+          if echo "$RESPONSE" | grep -qiE "אזל|לא זמין|out of stock|נגמר"; then
+            echo "❌ Out of stock"
+          else
+            echo "✅ In stock - sending notification"
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              -d chat_id="${TELEGRAM_CHAT_ID}" \
+              -d text="🎉 השובר חזר למלאי!%0A%0A${URL}"
+          fi
