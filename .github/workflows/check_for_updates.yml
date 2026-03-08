@@ -24,7 +24,7 @@ jobs:
             STATUS="✅ מחיר מועדון זמין!"
           fi
           
-          MESSAGE="כרטיס Corporate עם הטבת 30%
+          MESSAGE="*כרטיס Corporate *עם הטבת 30%
           ← ${STATUS}
           
           ${URL}"
