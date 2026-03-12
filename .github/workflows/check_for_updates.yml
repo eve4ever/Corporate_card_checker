@@ -2,7 +2,7 @@ name: Check Corporate Card
 
 on:
   schedule:
-     - cron: '0 09,18 * * *'
+    - cron: '0 7,16 * * *'
   workflow_dispatch:
 
 jobs:
@@ -17,6 +17,11 @@ jobs:
           URL="https://www.mycorporate.co.il/?page=Benefit&uuid=89ff39db-8348-456a-9667-e2dae46e&category_id=81"
           
           RESPONSE=$(curl -s "$URL")
+          
+          # הדפס חלק מהתגובה ללוג כדי לראות מה יש שם
+          echo "=== DEBUG ==="
+          echo "$RESPONSE" | grep -i "מלאי\|מועדון\|stock" || echo "No match found"
+          echo "=== END DEBUG ==="
           
           if echo "$RESPONSE" | grep -q "אזל המלאי למחיר מועדון"; then
             STATUS="❌ אזל המלאי למחיר מועדון"
