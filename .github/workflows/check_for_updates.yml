@@ -18,21 +18,30 @@ jobs:
           # קבל הודעות אחרונות מהבוט
           UPDATES=$(curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates")
           
+          # DEBUG - הצג את כל ההודעות
+          echo "=== DEBUG: הודעות שהתקבלו ==="
+          echo "$UPDATES" | grep -o '"text":"[^"]*"' || echo "אין הודעות"
+          echo "=== END DEBUG ==="
+          
           # תאריך תחילת החודש הנוכחי (timestamp)
           MONTH_START=$(date -d "$(date +%Y-%m-01)" +%s)
+          echo "DEBUG: תחילת החודש (timestamp): $MONTH_START"
           
           # בדוק אם יש הודעת "קניתי" מהחודש הזה
           if echo "$UPDATES" | grep -q '"text":"קניתי"'; then
             # בדוק אם ההודעה מהחודש הנוכחי
             MSG_DATE=$(echo "$UPDATES" | grep -o '"date":[0-9]*' | grep -o '[0-9]*' | tail -1)
+            echo "DEBUG: תאריך ההודעה (timestamp): $MSG_DATE"
             if [ "$MSG_DATE" -ge "$MONTH_START" ]; then
               echo "PAUSED=true" >> $GITHUB_OUTPUT
-              echo "נמצאה הודעת קניתי מהחודש - מדלג"
+              echo "✅ נמצאה הודעת קניתי מהחודש - מדלג"
             else
               echo "PAUSED=false" >> $GITHUB_OUTPUT
+              echo "⚠️ הודעת קניתי ישנה - ממשיך"
             fi
           else
             echo "PAUSED=false" >> $GITHUB_OUTPUT
+            echo "ℹ️ לא נמצאה הודעת קניתי"
           fi
       
       - name: Check stock and notify
