@@ -9,7 +9,34 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
+      - name: Check if paused this month
+        id: check_pause
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          # קבל הודעות אחרונות מהבוט
+          UPDATES=$(curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates")
+          
+          # תאריך תחילת החודש הנוכחי (timestamp)
+          MONTH_START=$(date -d "$(date +%Y-%m-01)" +%s)
+          
+          # בדוק אם יש הודעת "קניתי" מהחודש הזה
+          if echo "$UPDATES" | grep -q '"text":"קניתי"'; then
+            # בדוק אם ההודעה מהחודש הנוכחי
+            MSG_DATE=$(echo "$UPDATES" | grep -o '"date":[0-9]*' | grep -o '[0-9]*' | tail -1)
+            if [ "$MSG_DATE" -ge "$MONTH_START" ]; then
+              echo "PAUSED=true" >> $GITHUB_OUTPUT
+              echo "נמצאה הודעת קניתי מהחודש - מדלג"
+            else
+              echo "PAUSED=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "PAUSED=false" >> $GITHUB_OUTPUT
+          fi
+      
       - name: Check stock and notify
+        if: steps.check_pause.outputs.PAUSED == 'false'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
