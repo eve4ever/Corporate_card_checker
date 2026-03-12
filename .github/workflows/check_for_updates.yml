@@ -18,15 +18,14 @@ jobs:
           
           RESPONSE=$(curl -s "$URL")
           
-          # הדפס חלק מהתגובה ללוג כדי לראות מה יש שם
-          echo "=== DEBUG ==="
-          echo "$RESPONSE" | grep -i "מלאי\|מועדון\|stock" || echo "No match found"
-          echo "=== END DEBUG ==="
-          
-          if echo "$RESPONSE" | grep -q "אזל המלאי למחיר מועדון"; then
+          if echo "$RESPONSE" | grep -q 'club-out-of-stock hide'; then
+            STATUS="✅ זמין לרכישה במחיר מועדון"
+          elif echo "$RESPONSE" | grep -q "נוצלה הזכאות החודשית"; then
+            STATUS="⚠️ נוצלה הזכאות החודשית לחבר מועדון"
+          elif echo "$RESPONSE" | grep -q "אזל המלאי למחיר מועדון"; then
             STATUS="❌ אזל המלאי למחיר מועדון"
           else
-            STATUS="✅ מחיר מועדון זמין!"
+            STATUS="❓ לא ניתן לקבוע סטטוס"
           fi
           
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
