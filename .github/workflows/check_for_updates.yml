@@ -9,43 +9,44 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - name: Check if paused this month
+      - name: Check for new messages and pause status
         id: check_pause
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PAUSED_UNTIL: ${{ vars.PAUSED_UNTIL }}
         run: |
+          # בדוק אם יש הודעות חדשות
           UPDATES=$(curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates")
           
-          echo "=== DEBUG: כל התגובה ==="
-          echo "$UPDATES" | head -c 2000
-          echo ""
+          echo "=== DEBUG: הודעות ==="
+          echo "$UPDATES"
           echo "=== END DEBUG ==="
           
-          MONTH_START=$(date -d "$(date +%Y-%m-01)" +%s)
-          echo "DEBUG: תחילת החודש (timestamp): $MONTH_START"
-          
-          # חפש הודעת קניתי ושמור את כל הבלוק שלה
-          FOUND_THIS_MONTH="false"
-          
-          # פענח JSON ובדוק כל הודעה
-          while read -r line; do
-            if echo "$line" | grep -qE '\\u05e7\\u05e0\\u05d9\\u05ea\\u05d9|קניתי'; then
-              MSG_DATE=$(echo "$line" | grep -oP '"date":\s*\K[0-9]+')
-              echo "DEBUG: נמצאה הודעת קניתי עם תאריך: $MSG_DATE"
-              if [ -n "$MSG_DATE" ] && [ "$MSG_DATE" -ge "$MONTH_START" ]; then
-                FOUND_THIS_MONTH="true"
-                echo "DEBUG: ההודעה מהחודש הנוכחי!"
-                break
-              fi
+          # אם יש הודעת קניתי - שמור את סוף החודש הנוכחי
+          if echo "$UPDATES" | grep -qE '\\u05e7\\u05e0\\u05d9\\u05ea\\u05d9|קניתי'; then
+            END_OF_MONTH=$(date -d "$(date +%Y-%m-01) +1 month -1 day" +%Y-%m-%d)
+            echo "DEBUG: נמצאה הודעת קניתי, משהה עד $END_OF_MONTH"
+            
+            # שמור ב-GitHub Variable
+            gh variable set PAUSED_UNTIL --body "$END_OF_MONTH" --repo ${{ github.repository }}
+            
+            # נקה את ההודעות מטלגרם
+            UPDATE_ID=$(echo "$UPDATES" | grep -oP '"update_id":\K[0-9]+' | tail -1)
+            if [ -n "$UPDATE_ID" ]; then
+              curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?offset=$((UPDATE_ID + 1))"
             fi
-          done <<< "$(echo "$UPDATES" | tr '}' '\n')"
-          
-          if [ "$FOUND_THIS_MONTH" = "true" ]; then
+            
             echo "PAUSED=true" >> $GITHUB_OUTPUT
-            echo "✅ נמצאה הודעת קניתי מהחודש - מדלג"
           else
-            echo "PAUSED=false" >> $GITHUB_OUTPUT
-            echo "ℹ️ לא נמצאה הודעת קניתי מהחודש הנוכחי"
+            # בדוק אם עדיין בתוך תקופת ההשהיה
+            TODAY=$(date +%Y-%m-%d)
+            if [ -n "$PAUSED_UNTIL" ] && [[ "$TODAY" < "$PAUSED_UNTIL" || "$TODAY" == "$PAUSED_UNTIL" ]]; then
+              echo "DEBUG: מושהה עד $PAUSED_UNTIL"
+              echo "PAUSED=true" >> $GITHUB_OUTPUT
+            else
+              echo "PAUSED=false" >> $GITHUB_OUTPUT
+            fi
           fi
       
       - name: Check stock and notify
