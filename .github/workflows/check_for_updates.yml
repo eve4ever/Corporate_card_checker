@@ -20,27 +20,37 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
-          # קרא תאריך השהיה קיים אם יש
           PAUSED_UNTIL=""
           if [ -f "paused_until.txt" ]; then
             PAUSED_UNTIL=$(cat paused_until.txt)
             echo "DEBUG: נמצא קובץ השהיה עד $PAUSED_UNTIL"
           fi
           
-          # בדוק הודעות חדשות
           UPDATES=$(curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates")
           
           echo "=== DEBUG: הודעות ==="
           echo "$UPDATES"
           echo "=== END DEBUG ==="
           
-          # אם יש הודעת קניתי - שמור את סוף החודש
-          if echo "$UPDATES" | grep -qE '\\u05e7\\u05e0\\u05d9\\u05ea\\u05d9|קניתי'; then
+          # בדוק אם יש הודעת "חיפוש חדש" - מאפס את ההשהיה
+          if echo "$UPDATES" | grep -qE '\\u05d7\\u05d9\\u05e4\\u05d5\\u05e9 \\u05d7\\u05d3\\u05e9|חיפוש חדש'; then
+            echo "DEBUG: נמצאה הודעת חיפוש חדש - מאפס"
+            rm -f paused_until.txt
+            
+            UPDATE_ID=$(echo "$UPDATES" | grep -oP '"update_id":\K[0-9]+' | tail -1)
+            if [ -n "$UPDATE_ID" ]; then
+              curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?offset=$((UPDATE_ID + 1))"
+            fi
+            
+            echo "PAUSED=false" >> $GITHUB_OUTPUT
+            echo "SAVE_FILE=true" >> $GITHUB_OUTPUT
+          
+          # בדוק אם יש הודעת קניתי
+          elif echo "$UPDATES" | grep -qE '\\u05e7\\u05e0\\u05d9\\u05ea\\u05d9|קניתי'; then
             END_OF_MONTH=$(date -d "$(date +%Y-%m-01) +1 month -1 day" +%Y-%m-%d)
             echo "DEBUG: נמצאה הודעת קניתי, משהה עד $END_OF_MONTH"
             echo "$END_OF_MONTH" > paused_until.txt
             
-            # נקה הודעות מטלגרם
             UPDATE_ID=$(echo "$UPDATES" | grep -oP '"update_id":\K[0-9]+' | tail -1)
             if [ -n "$UPDATE_ID" ]; then
               curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?offset=$((UPDATE_ID + 1))"
@@ -49,13 +59,11 @@ jobs:
             echo "PAUSED=true" >> $GITHUB_OUTPUT
             echo "SAVE_FILE=true" >> $GITHUB_OUTPUT
           else
-            # בדוק אם עדיין מושהה
             TODAY=$(date +%Y-%m-%d)
             if [ -n "$PAUSED_UNTIL" ] && [[ "$TODAY" < "$PAUSED_UNTIL" || "$TODAY" == "$PAUSED_UNTIL" ]]; then
               echo "DEBUG: מושהה עד $PAUSED_UNTIL"
               echo "PAUSED=true" >> $GITHUB_OUTPUT
             else
-              # מחק קובץ ישן אם עבר התאריך
               if [ -f "paused_until.txt" ]; then
                 rm paused_until.txt
                 echo "SAVE_FILE=true" >> $GITHUB_OUTPUT
