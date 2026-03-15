@@ -13,31 +13,39 @@ jobs:
         id: check_pause
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           UPDATES=$(curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates")
           
-          echo "=== DEBUG: הודעות שהתקבלו ==="
-          echo "$UPDATES" | grep -o '"text":"[^"]*"' || echo "אין הודעות"
+          echo "=== DEBUG: כל התגובה ==="
+          echo "$UPDATES" | head -c 2000
+          echo ""
           echo "=== END DEBUG ==="
           
           MONTH_START=$(date -d "$(date +%Y-%m-01)" +%s)
           echo "DEBUG: תחילת החודש (timestamp): $MONTH_START"
           
-          # בדיקה גם לעברית וגם לקידוד Unicode
-          if echo "$UPDATES" | grep -qE '"text":"(קניתי|\\u05e7\\u05e0\\u05d9\\u05ea\\u05d9)"'; then
-            MSG_DATE=$(echo "$UPDATES" | grep -oP '"date":\K[0-9]+' | tail -1)
-            echo "DEBUG: תאריך ההודעה (timestamp): $MSG_DATE"
-            if [ "$MSG_DATE" -ge "$MONTH_START" ]; then
-              echo "PAUSED=true" >> $GITHUB_OUTPUT
-              echo "✅ נמצאה הודעת קניתי מהחודש - מדלג"
-            else
-              echo "PAUSED=false" >> $GITHUB_OUTPUT
-              echo "⚠️ הודעת קניתי ישנה - ממשיך"
+          # חפש הודעת קניתי ושמור את כל הבלוק שלה
+          FOUND_THIS_MONTH="false"
+          
+          # פענח JSON ובדוק כל הודעה
+          while read -r line; do
+            if echo "$line" | grep -qE '\\u05e7\\u05e0\\u05d9\\u05ea\\u05d9|קניתי'; then
+              MSG_DATE=$(echo "$line" | grep -oP '"date":\s*\K[0-9]+')
+              echo "DEBUG: נמצאה הודעת קניתי עם תאריך: $MSG_DATE"
+              if [ -n "$MSG_DATE" ] && [ "$MSG_DATE" -ge "$MONTH_START" ]; then
+                FOUND_THIS_MONTH="true"
+                echo "DEBUG: ההודעה מהחודש הנוכחי!"
+                break
+              fi
             fi
+          done <<< "$(echo "$UPDATES" | tr '}' '\n')"
+          
+          if [ "$FOUND_THIS_MONTH" = "true" ]; then
+            echo "PAUSED=true" >> $GITHUB_OUTPUT
+            echo "✅ נמצאה הודעת קניתי מהחודש - מדלג"
           else
             echo "PAUSED=false" >> $GITHUB_OUTPUT
-            echo "ℹ️ לא נמצאה הודעת קניתי"
+            echo "ℹ️ לא נמצאה הודעת קניתי מהחודש הנוכחי"
           fi
       
       - name: Check stock and notify
