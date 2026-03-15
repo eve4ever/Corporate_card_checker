@@ -6,52 +6,72 @@ on:
   workflow_dispatch:
 
 permissions:
-  actions: write
-  contents: read
+  contents: write
 
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
       - name: Check for new messages and pause status
         id: check_pause
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PAUSED_UNTIL: ${{ vars.PAUSED_UNTIL }}
         run: |
-          # בדוק אם יש הודעות חדשות
+          # קרא תאריך השהיה קיים אם יש
+          PAUSED_UNTIL=""
+          if [ -f "paused_until.txt" ]; then
+            PAUSED_UNTIL=$(cat paused_until.txt)
+            echo "DEBUG: נמצא קובץ השהיה עד $PAUSED_UNTIL"
+          fi
+          
+          # בדוק הודעות חדשות
           UPDATES=$(curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates")
           
           echo "=== DEBUG: הודעות ==="
           echo "$UPDATES"
           echo "=== END DEBUG ==="
           
-          # אם יש הודעת קניתי - שמור את סוף החודש הנוכחי
+          # אם יש הודעת קניתי - שמור את סוף החודש
           if echo "$UPDATES" | grep -qE '\\u05e7\\u05e0\\u05d9\\u05ea\\u05d9|קניתי'; then
             END_OF_MONTH=$(date -d "$(date +%Y-%m-01) +1 month -1 day" +%Y-%m-%d)
             echo "DEBUG: נמצאה הודעת קניתי, משהה עד $END_OF_MONTH"
+            echo "$END_OF_MONTH" > paused_until.txt
             
-            # שמור ב-GitHub Variable
-            gh variable set PAUSED_UNTIL --body "$END_OF_MONTH" --repo ${{ github.repository }}
-            
-            # נקה את ההודעות מטלגרם
+            # נקה הודעות מטלגרם
             UPDATE_ID=$(echo "$UPDATES" | grep -oP '"update_id":\K[0-9]+' | tail -1)
             if [ -n "$UPDATE_ID" ]; then
               curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?offset=$((UPDATE_ID + 1))"
             fi
             
             echo "PAUSED=true" >> $GITHUB_OUTPUT
+            echo "SAVE_FILE=true" >> $GITHUB_OUTPUT
           else
-            # בדוק אם עדיין בתוך תקופת ההשהיה
+            # בדוק אם עדיין מושהה
             TODAY=$(date +%Y-%m-%d)
             if [ -n "$PAUSED_UNTIL" ] && [[ "$TODAY" < "$PAUSED_UNTIL" || "$TODAY" == "$PAUSED_UNTIL" ]]; then
               echo "DEBUG: מושהה עד $PAUSED_UNTIL"
               echo "PAUSED=true" >> $GITHUB_OUTPUT
             else
+              # מחק קובץ ישן אם עבר התאריך
+              if [ -f "paused_until.txt" ]; then
+                rm paused_until.txt
+                echo "SAVE_FILE=true" >> $GITHUB_OUTPUT
+              fi
               echo "PAUSED=false" >> $GITHUB_OUTPUT
             fi
           fi
+      
+      - name: Save pause status
+        if: steps.check_pause.outputs.SAVE_FILE == 'true'
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add -A
+          git commit -m "Update pause status" || true
+          git push
       
       - name: Check stock and notify
         if: steps.check_pause.outputs.PAUSED == 'false'
