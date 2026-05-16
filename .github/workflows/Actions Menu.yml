@@ -1,4 +1,4 @@
-name: Search Reminder Menu
+name: Actions Menu
 
 on:
   schedule:
@@ -22,10 +22,16 @@ jobs:
         run: |
           UPDATES=$(curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates")
           
+          echo "=== DEBUG: Full Response ==="
+          echo "$UPDATES"
+          echo "=== END DEBUG ==="
+          
           # Extract latest message text
           MESSAGE=$(echo "$UPDATES" | grep -oP '"text":"\K[^"]*' | tail -1)
           UPDATE_ID=$(echo "$UPDATES" | grep -oP '"update_id":\K[0-9]+' | tail -1)
           
+          echo "DEBUG: MESSAGE=$MESSAGE"
+          echo "DEBUG: UPDATE_ID=$UPDATE_ID"
           echo "MESSAGE=$MESSAGE" >> $GITHUB_OUTPUT
           echo "UPDATE_ID=$UPDATE_ID" >> $GITHUB_OUTPUT
           
