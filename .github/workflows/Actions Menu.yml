@@ -26,9 +26,9 @@ jobs:
           echo "$UPDATES"
           echo "=== END DEBUG ==="
           
-          # Extract latest message text
-          MESSAGE=$(echo "$UPDATES" | grep -oP '"text":"\K[^"]*' | tail -1)
-          UPDATE_ID=$(echo "$UPDATES" | grep -oP '"update_id":\K[0-9]+' | tail -1)
+          # Extract latest message text and decode Unicode
+          MESSAGE=$(echo "$UPDATES" | jq -r '.result[-1].message.text // empty')
+          UPDATE_ID=$(echo "$UPDATES" | jq -r '.result[-1].update_id // empty')
           
           echo "DEBUG: MESSAGE=$MESSAGE"
           echo "DEBUG: UPDATE_ID=$UPDATE_ID"
