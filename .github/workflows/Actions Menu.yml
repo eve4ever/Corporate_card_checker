@@ -47,10 +47,163 @@ jobs:
           MESSAGE: ${{ steps.check_cmd.outputs.MESSAGE }}
         run: |
           # Extract time (last part: HH:MM)
-          TIME=$(echo "$MESSAGE" | grep -oP '[0-9]{1,2}:[0-9]{2}$')
+          TIME=$(echo "$MESSAGE" | grep -oP '[0-9]{1,2}:[0-9]{2}
+          
+          echo "DEBUG: MESSAGE=$MESSAGE"
+          echo "DEBUG: KEYWORD=$KEYWORD"
+          echo "DEBUG: TIME=$TIME"
+          
+          # Validate time format
+          if ! echo "$TIME" | grep -qE '^(11|14|18|20):[0-9]{2}$'; then
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              -H "Content-Type: application/json" \
+              -d '{"chat_id": "'${TELEGRAM_CHAT_ID}'", "text": "❌ שעה לא תקינה. השתמשי: חיפוש חדש starbucks 18:00\n\nשעות זמינות: 11:00, 14:00, 18:00, 20:00"}'
+            exit 0
+          fi
+          
+          if [ -z "$KEYWORD" ] || [ -z "$TIME" ]; then
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              -H "Content-Type: application/json" \
+              -d '{"chat_id": "'${TELEGRAM_CHAT_ID}'", "text": "❌ פורמט לא תקין.\n\nדוגמה: חיפוש חדש starbucks 18:00"}'
+            exit 0
+          fi
+          
+          # Initialize searches.json if doesn't exist
+          if [ ! -f "searches.json" ]; then
+            echo '{"searches": []}' > searches.json
+          fi
+          
+          # Add new search using jq with proper escaping
+          KEYWORD_ESCAPED=$(echo "$KEYWORD" | jq -Rs .)
+          TIME_ESCAPED=$(echo "$TIME" | jq -Rs .)
+          
+          jq --argjson kw "$KEYWORD_ESCAPED" --argjson tm "$TIME_ESCAPED" \
+            '.searches += [{"keyword": $kw, "time": $tm}]' searches.json > searches.json.tmp
+          mv searches.json.tmp searches.json
+          
+          # Commit to GitHub
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add searches.json
+          git commit -m "Add search: $KEYWORD at $TIME" || true
+          git push
+          
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "{\"chat_id\": \"${TELEGRAM_CHAT_ID}\", \"text\": \"✅ נוסף: ${KEYWORD} ב${TIME}\"}"
+      
+      - name: Handle הצג command
+        if: contains(steps.check_cmd.outputs.MESSAGE, 'הצג')
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ ! -f "searches.json" ]; then
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              -H "Content-Type: application/json" \
+              -d '{"chat_id": "'${TELEGRAM_CHAT_ID}'", "text": "📭 אין חיפושים שמורים"}'
+            exit 0
+          fi
+          
+          SEARCHES=$(cat searches.json | jq -r '.searches | if length == 0 then "📭 אין חיפושים שמורים" else "📋 <b>החיפושים שלך:</b>\n" + (to_entries | map("\(.key + 1)️⃣ <b>\(.value.keyword)</b> - \(.value.time)") | join("\n")) end')
+          
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d '{"chat_id": "'${TELEGRAM_CHAT_ID}'", "text": '"$(echo "$SEARCHES" | jq -Rs .)"', "parse_mode": "HTML"}'
+      
+      - name: Handle בטל command
+        if: contains(steps.check_cmd.outputs.MESSAGE, 'בטל')
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          MESSAGE: ${{ steps.check_cmd.outputs.MESSAGE }}
+        run: |
+          if [ ! -f "searches.json" ]; then
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              -H "Content-Type: application/json" \
+              -d '{"chat_id": "'${TELEGRAM_CHAT_ID}'", "text": "📭 אין חיפושים שמורים"}'
+            exit 0
+          fi
+          
+          # Extract keyword to delete (everything after "בטל ")
+          KEYWORD=$(echo "$MESSAGE" | sed 's/.*בטל //')
+          
+          if [ -z "$KEYWORD" ]; then
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              -H "Content-Type: application/json" \
+              -d '{"chat_id": "'${TELEGRAM_CHAT_ID}'", "text": "❌ פורמט לא תקין.\n\nדוגמה: בטל starbucks"}'
+            exit 0
+          fi
+          
+          # Remove search by keyword
+          jq --arg kw "$KEYWORD" '.searches |= map(select(.keyword != $kw))' searches.json > searches.json.tmp
+          mv searches.json.tmp searches.json
+          
+          # Commit to GitHub
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add searches.json
+          git commit -m "Delete search: $KEYWORD" || true
+          git push
+          
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "{\"chat_id\": \"${TELEGRAM_CHAT_ID}\", \"text\": \"✅ נמחק: ${KEYWORD}\"}"
+
+  send_reminders:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Get current hour
+        id: time
+        run: |
+          HOUR=$(date +%H)
+          echo "HOUR=$HOUR" >> $GITHUB_OUTPUT
+      
+      - name: Send search reminders
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ ! -f "searches.json" ]; then
+            exit 0
+          fi
+          
+          HOUR=${{ steps.time.outputs.HOUR }}
+          
+          # Map hour to time format (11=11:00, 14=14:00, 18=18:00, 20=20:00)
+          case $HOUR in
+            11) TIME="11:00" ;;
+            14) TIME="14:00" ;;
+            18) TIME="18:00" ;;
+            20) TIME="20:00" ;;
+            *) exit 0 ;;
+          esac
+          
+          # Get all searches for current time
+          KEYWORDS=$(cat searches.json | jq -r '.searches[] | select(.time == "'$TIME'") | .keyword')
+          
+          if [ -z "$KEYWORDS" ]; then
+            exit 0
+          fi
+          
+          # Send reminder for each keyword
+          while IFS= read -r KEYWORD; do
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "chat_id": "'${TELEGRAM_CHAT_ID}'",
+                "text": "<b>🔔 תזכורת חיפוש</b>\n\n<a href=\"tg://search?query='"${KEYWORD}"'\">חפשי: '"${KEYWORD}"'</a>",
+                "parse_mode": "HTML",
+                "disable_web_page_preview": true
+              }'
+            sleep 1
+          done <<< "$KEYWORDS" | tr -d '\n' | tr -d '\r')
           
           # Extract keyword (everything between "חיפוש חדש" and the time)
-          KEYWORD=$(echo "$MESSAGE" | sed 's/.*חיפוש חדש //' | sed "s/ $TIME$//")
+          KEYWORD=$(echo "$MESSAGE" | sed 's/.*חיפוש חדש //' | sed "s/ $TIME$//" | tr -d '\n' | tr -d '\r')
           
           echo "DEBUG: MESSAGE=$MESSAGE"
           echo "DEBUG: KEYWORD=$KEYWORD"
