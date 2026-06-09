@@ -2,7 +2,7 @@ name: Check Corporate Card
 
 on:
   schedule:
-    - cron: '0 7,16 * * *'
+    - cron: '0 16 * * *'
   workflow_dispatch:
 
 permissions:
