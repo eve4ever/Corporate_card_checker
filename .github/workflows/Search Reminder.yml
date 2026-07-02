@@ -1,0 +1,65 @@
+name: Search Reminders
+on:
+  schedule:
+    - cron: '0 18 */2 * *'      # מסגרת דיגיטלית
+    - cron: '0 15 */2 * *'    # oral-b io ראשים
+  workflow_dispatch:
+    inputs:
+      word:
+        description: 'Search word (manual test run)'
+        required: false
+      title:
+        description: 'Title (manual test run)'
+        required: false
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve search parameters
+        id: params
+        run: |
+          declare -A WORDS
+          declare -A TITLES
+
+          # === Add one line here per new cron above ===
+          WORDS["0 18 */2 * *"]="מסגרת דיגיטלית"
+          TITLES["0 13 */2 * *"]="🔍 תזכורת חיפוש מסגרת דיגיטלית"
+
+          WORDS["0 18 */2 * *"]="oral-b io ראשים"
+          TITLES["0 15 */2 * *"]="🪥 תזכורת חיפוש ראשים למברשת שיניים"
+          # ==============================================
+
+          SCHEDULE="${{ github.event.schedule }}"
+
+          if [ -n "${{ github.event.inputs.word }}" ]; then
+            WORD="${{ github.event.inputs.word }}"
+            TITLE="${{ github.event.inputs.title }}"
+          elif [ -n "$SCHEDULE" ] && [ -n "${WORDS[$SCHEDULE]}" ]; then
+            WORD="${WORDS[$SCHEDULE]}"
+            TITLE="${TITLES[$SCHEDULE]}"
+          else
+            echo "::error::No mapping found for schedule '$SCHEDULE'. Add it to the WORDS/TITLES table."
+            exit 1
+          fi
+
+          echo "word=$WORD" >> "$GITHUB_OUTPUT"
+          echo "title=$TITLE" >> "$GITHUB_OUTPUT"
+
+      - name: Send search reminder
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          WORD: ${{ steps.params.outputs.word }}
+          TITLE: ${{ steps.params.outputs.title }}
+        run: |
+          TEXT="<b>${TITLE}</b>"$'\n\n'"<a href=\"tg://search?query=${WORD}\">חפשי: ${WORD}</a>"
+
+          PAYLOAD=$(jq -n \
+            --arg chat_id "$TELEGRAM_CHAT_ID" \
+            --arg text "$TEXT" \
+            '{chat_id: $chat_id, text: $text, parse_mode: "HTML", disable_web_page_preview: true}')
+
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD"
