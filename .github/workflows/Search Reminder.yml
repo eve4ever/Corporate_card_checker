@@ -2,7 +2,6 @@ name: Search Reminders
 on:
   schedule:
     - cron: '0 18 */2 * *'      # מסגרת דיגיטלית
-    - cron: '0 15 */2 * *'    # oral-b io ראשים
   workflow_dispatch:
     inputs:
       word:
@@ -26,8 +25,6 @@ jobs:
           WORDS["0 18 */2 * *"]="מסגרת דיגיטלית"
           TITLES["0 13 */2 * *"]="🔍 תזכורת חיפוש מסגרת דיגיטלית"
 
-          WORDS["0 18 */2 * *"]="oral-b io ראשים"
-          TITLES["0 15 */2 * *"]="🪥 תזכורת חיפוש ראשים למברשת שיניים"
           # ==============================================
 
           SCHEDULE="${{ github.event.schedule }}"
